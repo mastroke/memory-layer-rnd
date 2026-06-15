@@ -1,38 +1,42 @@
 # Memory Layer R&D
 
-Research harness for agent memory architectures: episodic events, semantic facts, graph links and conflict resolution.
+Research harness for agent memory architectures, informed by studying [Mem0](https://github.com/mastroke/mem0), [Graphiti](https://github.com/mastroke/graphiti) and [Letta](https://github.com/mastroke/letta).
 
 ## Problem
 
-Long-running agents usually treat memory as “append everything to context.” That scales poorly, creates contradictions and makes retrieval unpredictable. This project models memory as structured stores with explicit update and retrieval rules.
+Long-running agents usually treat memory as “append everything to context.” Production systems instead separate scope, time, structured blocks and retrieval behavior. This repository models those boundaries in a small testable harness.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Event["Event"] --> Extract["Extraction"]
-    Extract --> Episodic["Episodic store"]
-    Extract --> Semantic["Semantic store"]
-    Extract --> Graph["Graph store"]
-    Semantic --> Resolve["Conflict resolver"]
-    Graph --> Resolve
-    Resolve --> Retrieve["Retrieval layer"]
+    Scope["Session scope"] --> Episode["Episodes"]
+    Scope --> Blocks["Core blocks"]
+    Episode --> Facts["Temporal facts"]
+    Facts --> Invalidate["Invalidation layer"]
+    Blocks --> Retrieve["Hybrid retrieval"]
+    Facts --> Retrieve
+    Graph["Graph links"] --> Retrieve
+    Episode --> Retrieve
 ```
 
-### Memory Types
+### Layers
 
-| Store | Holds | Update model |
+| Layer | Inspired by | Responsibility |
 | --- | --- | --- |
-| Episodic | Recent interaction events | Append with bounded window |
-| Semantic | Stable facts about users or domain | Upsert with conflict resolution |
-| Graph | Relationships between concepts | Link entities for contextual retrieval |
+| `SessionScope` | Mem0 | Isolate memory by user, agent and run |
+| `CoreBlock` | Letta | Keep small structured memory always available |
+| `Episode` | Graphiti | Timestamped source events with `reference_time` |
+| `TemporalFact` | Graphiti | Facts with `valid_at` / `invalid_at` |
+| `MemoryHarness` | All three | Orchestrates ingest, invalidation and retrieval |
 
 ## Design Thinking
 
-- **Test memory like data** — retrieval and conflict behavior should have fixtures and assertions.
-- **Update beats append** — contradictions should resolve, not accumulate.
-- **Start simple** — deterministic stores before vector DBs or graph services.
-- **Retrieval is multi-source** — answers may come from facts, links or recent events.
+- **Scope before storage** — every write and read should know which actor/session it belongs to.
+- **Time is part of truth** — ask what was valid at `T`, not only what exists now.
+- **Contradictions should invalidate** — preserve history without keeping stale facts active.
+- **Blocks vs recall vs facts** — not everything belongs in the same memory tier.
+- **Learn upstream, implement minimally** — see [docs/upstream-learning.md](docs/upstream-learning.md).
 
 ## Quick Start
 
@@ -44,16 +48,29 @@ python -m memory_layer_rnd.demo
 pytest
 ```
 
-## Open Questions
+## Example
 
-- Which observations deserve durable memory versus session-only context?
-- When should a new fact replace an old one instead of coexisting?
-- How much should graph structure influence ranking versus semantic similarity?
-- How do we benchmark memory quality beyond anecdotal prompt tests?
+```python
+from memory_layer_rnd import MemoryHarness, SessionScope
+
+harness = MemoryHarness(scope=SessionScope(user_id="u1", agent_id="planner"))
+harness.remember_episode("User wants temporal memory", reference_time="2026-06-01T10:00:00+00:00")
+harness.add_fact("focus", "vector-only memory", reference_time="2026-06-01T10:05:00+00:00")
+harness.add_fact("focus", "temporal facts with invalidation", reference_time="2026-06-15T09:00:00+00:00")
+
+print(harness.active_facts_at("2026-06-05T00:00:00+00:00"))
+print(harness.retrieve("temporal memory focus"))
+```
+
+## Upstream Study Repos
+
+- [mastroke/mem0](https://github.com/mastroke/mem0)
+- [mastroke/graphiti](https://github.com/mastroke/graphiti)
+- [mastroke/letta](https://github.com/mastroke/letta)
 
 ## Evolution Path
 
-- Vector retrieval adapter behind the same store interface
-- Temporal graph relationships inspired by Zep/Graphiti patterns
-- Long-memory benchmark fixtures
-- LangGraph integration with shared memory contract
+- LongMemEval-style replay fixtures
+- Mem0 extraction adapter
+- Graphiti entity-edge retrieval boosts
+- Letta recall compaction for long episode histories
