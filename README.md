@@ -28,7 +28,16 @@ flowchart LR
 | `CoreBlock` | Letta | Keep small structured memory always available |
 | `Episode` | Graphiti | Timestamped source events with `reference_time` |
 | `TemporalFact` | Graphiti | Facts with `valid_at` / `invalid_at` |
-| `MemoryHarness` | All three | Orchestrates ingest, invalidation and retrieval |
+| `MemoryHarness` | All three | Orchestrates ingest, invalidation, compaction and retrieval |
+
+### Retrieval and compaction controls
+
+- `retrieve(..., recency_half_life_days=N)` adds an exponential recency boost so
+  fresher, equally-relevant facts and episodes rank ahead of stale ones
+  (generative-agents style). Omit it for purely lexical ranking.
+- `compact_episodes(keep_recent=N)` folds older episodes into a read-only
+  `recall_summary` block and moves them to `archived_episodes`, modeling
+  Letta-style recall compaction for long histories without losing provenance.
 
 ## Design Thinking
 
@@ -73,4 +82,5 @@ print(harness.retrieve("temporal memory focus"))
 - LongMemEval-style replay fixtures
 - Mem0 extraction adapter
 - Graphiti entity-edge retrieval boosts
-- Letta recall compaction for long episode histories
+- ~~Recency-weighted retrieval boosts~~ — done (`recency_half_life_days`)
+- ~~Letta recall compaction for long episode histories~~ — done (`compact_episodes`)

@@ -1,3 +1,5 @@
+import pytest
+
 from memory_layer_rnd.harness import MemoryHarness
 from memory_layer_rnd.scopes import SessionScope
 
@@ -63,7 +65,7 @@ def test_point_in_time_episode_window() -> None:
 def test_hybrid_retrieval_returns_multiple_sources() -> None:
     harness = MemoryHarness(scope=SessionScope(user_id="u1"))
     harness.upsert_block("human", "preferences", "likes graph memory")
-    harness.add_fact("topic", "graph memory retrieval")
+    harness.add_fact("topic", "graph memory retrieval", reference_time="2026-06-01T10:00:00+00:00")
     harness.link("graph", "memory")
     harness.remember_episode("Discussed graph memory patterns", reference_time="2026-06-01T10:00:00+00:00")
 
@@ -72,6 +74,59 @@ def test_hybrid_retrieval_returns_multiple_sources() -> None:
     assert any(item.startswith("fact[") for item in results)
     assert any(item.startswith("graph:") for item in results)
     assert any(item.startswith("episode@") for item in results)
+
+
+def test_recency_weighting_prefers_fresher_facts() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    harness.add_fact("alpha", "graph memory retrieval", reference_time="2026-01-01T00:00:00+00:00")
+    harness.add_fact("beta", "graph memory retrieval", reference_time="2026-06-01T00:00:00+00:00")
+
+    as_of = "2026-06-10T00:00:00+00:00"
+
+    lexical = harness.retrieve("graph memory retrieval", as_of=as_of)
+    weighted = harness.retrieve("graph memory retrieval", as_of=as_of, recency_half_life_days=30)
+
+    # Without recency weighting both facts tie and stable sort keeps insertion order.
+    assert lexical[0].startswith("fact[") and "alpha" in lexical[0]
+    # With recency weighting the fresher fact (beta) is promoted ahead of alpha.
+    assert weighted[0].startswith("fact[") and "beta" in weighted[0]
+
+
+def test_recency_weighting_rejects_nonpositive_half_life() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    harness.add_fact("alpha", "graph memory", reference_time="2026-06-01T00:00:00+00:00")
+
+    with pytest.raises(ValueError):
+        harness.retrieve("graph", as_of="2026-06-02T00:00:00+00:00", recency_half_life_days=0)
+
+
+def test_recall_compaction_summarizes_old_episodes() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    for day in range(1, 9):
+        harness.remember_episode(f"event number {day}", reference_time=f"2026-06-0{day}T10:00:00+00:00")
+
+    result = harness.compact_episodes(keep_recent=3)
+
+    assert result.archived == 5
+    assert result.retained == 3
+    assert len(harness.episodes) == 3
+    assert len(harness.archived_episodes) == 5
+    assert result.summary is not None and result.summary.read_only is True
+    assert "recall_summary" in harness.blocks
+    # Most recent episodes are the ones kept in the active window.
+    assert harness.episodes[-1].text == "event number 8"
+
+
+def test_recall_compaction_noop_when_under_threshold() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    harness.remember_episode("only event", reference_time="2026-06-01T10:00:00+00:00")
+
+    result = harness.compact_episodes(keep_recent=5)
+
+    assert result.summary is None
+    assert result.archived == 0
+    assert result.retained == 1
+    assert "recall_summary" not in harness.blocks
 
 
 def test_demo_reports_temporal_views() -> None:

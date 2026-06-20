@@ -36,6 +36,13 @@ This repository studies patterns from three widely used memory systems. Forks li
 | Block metadata in prompt surface | `letta/schemas/memory.py` | `CoreBlock.render()` |
 | Out-of-context memory metadata | `letta/prompts/prompt_generator.py` | `metadata()` |
 | Tier separation: blocks vs episodes vs facts | `memgpt_v2_chat.py` | `MemoryHarness` stores |
+| Recall compaction of overflowing history | `letta/services/summarizer/` | `compact_episodes()` in `harness.py` |
+
+## Cross-cutting retrieval patterns
+
+| Pattern | Upstream reference | Implemented here |
+| --- | --- | --- |
+| Recency-weighted memory ranking | generative-agents `retrieve()` recency decay; Mem0 score fusion | `_recency_weight()` + `retrieve(recency_half_life_days=...)` |
 
 ## What is intentionally not ported yet
 
@@ -56,4 +63,5 @@ Those belong in later adapters once the harness contracts are stable.
 - LongMemEval-style fixture replay
 - Optional Mem0 adapter behind `MemoryHarness`
 - Graphiti-style entity edge retrieval boosts
-- Letta-style recall compaction for long episode windows
+- ~~Letta-style recall compaction for long episode windows~~ — shipped via `compact_episodes()`
+- ~~Recency-weighted retrieval scoring~~ — shipped via `recency_half_life_days`
