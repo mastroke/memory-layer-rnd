@@ -37,6 +37,39 @@ def test_hash_dedup_blocks_exact_duplicates() -> None:
     assert second.action == "duplicate"
 
 
+def test_semantic_dedup_merges_near_duplicate_facts() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+
+    first = harness.add_fact(
+        "stack",
+        "user prefers python fastapi docker",
+        reference_time="2026-06-01T10:00:00+00:00",
+    )
+    second = harness.add_fact(
+        "stack",
+        "prefers python fastapi and docker stack",
+        reference_time="2026-06-05T10:00:00+00:00",
+    )
+
+    assert first.action == "created"
+    assert second.action == "merged"
+    assert second.fact.fact_id == first.fact.fact_id
+    assert len(harness.facts) == 1
+    assert len(harness.active_facts_at("2026-06-10T00:00:00+00:00")) == 1
+
+
+def test_semantic_dedup_respects_subject_scope() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+
+    first = harness.add_fact("stack", "python fastapi docker deployment")
+    second = harness.add_fact("tooling", "python fastapi docker deployment")
+
+    assert first.action == "created"
+    assert second.action == "created"
+    assert first.fact.fact_id != second.fact.fact_id
+    assert len(harness.facts) == 2
+
+
 def test_scope_key_is_deterministic() -> None:
     scope = SessionScope(user_id="u1", agent_id="a1", run_id="r1")
     assert "user:u1" in scope.key

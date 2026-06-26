@@ -16,6 +16,7 @@ This repository studies patterns from three widely used memory systems. Forks li
 | Rolling message buffer for extraction context | `mem0/memory/storage.py` | `message_buffer` in `MemoryHarness` |
 | ADD-only with supersede links | `mem0/configs/prompts.py` | `linked_ids` on `TemporalFact` |
 | MD5 hash dedup | `mem0/memory/main.py` | `_hash_text()` in `harness.py` |
+| Lexical near-duplicate merge | Mem0 dream-style merge heuristics | `near_duplicate()` + write-path merge in `harness.py` |
 | Hybrid retrieval fusion | `mem0/utils/scoring.py` | `retrieve()` scoring in `harness.py` |
 
 ## Graphiti patterns adopted

@@ -84,3 +84,4 @@ print(harness.retrieve("temporal memory focus"))
 - Graphiti entity-edge retrieval boosts
 - ~~Recency-weighted retrieval boosts~~ — done (`recency_half_life_days`)
 - ~~Letta recall compaction for long episode histories~~ — done (`compact_episodes`)
+- ~~Semantic near-duplicate dedup on fact write~~ — done (`add_fact` merge path)
