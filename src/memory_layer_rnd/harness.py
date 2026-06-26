@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass, field
 
 from memory_layer_rnd.blocks import CoreBlock
+from memory_layer_rnd.dedup import near_duplicate
 from memory_layer_rnd.scopes import SessionScope
 from memory_layer_rnd.temporal import TemporalFact, utc_now
 
@@ -68,6 +69,15 @@ class MemoryHarness:
         key = subject.lower()
         return [fact for fact in self.facts if fact.subject == key and fact.is_active]
 
+    @staticmethod
+    def _merge_near_duplicate(existing: TemporalFact, incoming: str, when) -> TemporalFact:
+        """Reaffirm an active near-duplicate instead of storing a second fact."""
+        if len(incoming.split()) > len(existing.fact.split()):
+            existing.fact = incoming
+        if when > existing.valid_at:
+            existing.valid_at = when
+        return existing
+
     def add_fact(
         self,
         subject: str,
@@ -87,9 +97,18 @@ class MemoryHarness:
             if existing is not None:
                 return AddFactResult(action="duplicate", fact=existing, invalidated=[])
 
+        active_for_subject = self._active_facts_for_subject(subject)
+        has_contradiction = any(_contradicts(old.fact, fact_text) for old in active_for_subject)
+        if not has_contradiction:
+            for existing in active_for_subject:
+                if near_duplicate(existing.fact, fact_text):
+                    self._hashes.add(digest)
+                    merged = self._merge_near_duplicate(existing, fact_text, when_dt)
+                    return AddFactResult(action="merged", fact=merged, invalidated=[])
+
         invalidated_ids: list[str] = []
         if invalidate_conflicts:
-            for old in self._active_facts_for_subject(subject):
+            for old in active_for_subject:
                 if _contradicts(old.fact, fact_text):
                     old.invalidate(at=when_dt)
                     invalidated_ids.append(old.fact_id)
