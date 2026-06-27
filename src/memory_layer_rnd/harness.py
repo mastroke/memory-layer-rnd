@@ -6,6 +6,7 @@ from memory_layer_rnd.blocks import CoreBlock
 from memory_layer_rnd.decay import temporal_decay_weight
 from memory_layer_rnd.dedup import near_duplicate
 from memory_layer_rnd.graph import FactEdge, FactGraph
+from memory_layer_rnd.resolver import ConflictStrategy, resolve_contradiction
 from memory_layer_rnd.scopes import SessionScope
 from memory_layer_rnd.temporal import TemporalFact, utc_now
 
@@ -48,6 +49,7 @@ class MemoryHarness:
     _hashes: set[str] = field(default_factory=set)
     decay_half_life_days: float | None = None
     decay_invalidation_threshold: float = 0.5
+    conflict_strategy: ConflictStrategy = ConflictStrategy.LAST_WRITE_WINS
 
     def __post_init__(self) -> None:
         if self.decay_half_life_days is not None and self.decay_half_life_days <= 0:
@@ -140,7 +142,11 @@ class MemoryHarness:
         fact_text: str,
         reference_time: str | None = None,
         invalidate_conflicts: bool = True,
+        confidence: float = 1.0,
     ) -> AddFactResult:
+        if confidence < 0.0:
+            raise ValueError("confidence must be non-negative")
+
         when = reference_time or utc_now().isoformat()
         when_dt = utc_now() if reference_time is None else _parse_time(reference_time)
         digest = self._hash_text(f"{subject}:{fact_text}")
@@ -154,7 +160,8 @@ class MemoryHarness:
                 return AddFactResult(action="duplicate", fact=existing, invalidated=[])
 
         active_for_subject = self._active_facts_for_subject(subject)
-        has_contradiction = any(_contradicts(old.fact, fact_text) for old in active_for_subject)
+        conflicting = [old for old in active_for_subject if _contradicts(old.fact, fact_text)]
+        has_contradiction = bool(conflicting)
         if not has_contradiction:
             for existing in active_for_subject:
                 if near_duplicate(existing.fact, fact_text):
@@ -163,19 +170,39 @@ class MemoryHarness:
                     return AddFactResult(action="merged", fact=merged, invalidated=[])
 
         invalidated_ids: list[str] = []
-        if invalidate_conflicts:
-            for old in active_for_subject:
-                if _contradicts(old.fact, fact_text):
+        if has_contradiction and invalidate_conflicts:
+            outcome = resolve_contradiction(
+                strategy=self.conflict_strategy,
+                conflicting=conflicting,
+                incoming_time=when_dt,
+                incoming_confidence=confidence,
+            )
+            if not outcome.store_incoming:
+                prevailing = next(
+                    (fact for fact in conflicting if fact.fact_id == outcome.prevailing_fact_id),
+                    conflicting[0],
+                )
+                return AddFactResult(action=outcome.action, fact=prevailing, invalidated=[])
+            invalidated_ids = outcome.invalidate_ids
+            for old in conflicting:
+                if old.fact_id in invalidated_ids:
                     old.invalidate(at=when_dt)
-                    invalidated_ids.append(old.fact_id)
 
-        new_fact = TemporalFact(subject=subject.lower(), fact=fact_text, valid_at=when_dt)
+        new_fact = TemporalFact(
+            subject=subject.lower(),
+            fact=fact_text,
+            valid_at=when_dt,
+            confidence=confidence,
+        )
         if invalidated_ids:
             new_fact.linked_ids = invalidated_ids
 
         self.facts.append(new_fact)
         self._hashes.add(digest)
-        action = "created" if not invalidated_ids else "superseded"
+        if not has_contradiction or not invalidate_conflicts:
+            action = "created"
+        else:
+            action = "superseded"
         return AddFactResult(action=action, fact=new_fact, invalidated=invalidated_ids)
 
     def episodes_before(self, reference_time: str, limit: int = 10) -> list[Episode]:

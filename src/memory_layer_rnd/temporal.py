@@ -16,6 +16,7 @@ class TemporalFact:
     valid_at: datetime
     invalid_at: datetime | None = None
     expired_at: datetime | None = None
+    confidence: float = 1.0
     linked_ids: list[str] = field(default_factory=list)
     fact_id: str = field(default_factory=lambda: uuid4().hex[:8])
 
