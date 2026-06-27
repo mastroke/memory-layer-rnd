@@ -55,6 +55,14 @@ This repository studies patterns from three widely used memory systems. Forks li
 
 Those belong in later adapters once the harness contracts are stable.
 
+## Memory contract (ADR 0009)
+
+The harness refuses to treat raw transcripts, implicit tier assignment, embedding
+indexes, or persistence as part of the default memory surface. Durable content
+flows through typed tiers (`TemporalFact`, `Episode`, `CoreBlock`, graph edges).
+See [docs/adr/0009-memory-as-contract-boundaries.md](adr/0009-memory-as-contract-boundaries.md)
+and `contract.py` for the canonical guarantee and refusal lists.
+
 ## Suggested reading order
 
 1. Mem0 `memory/main.py` — write path and scope filters

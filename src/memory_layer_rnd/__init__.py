@@ -1,6 +1,17 @@
 """Memory-layer research primitives for AI agents."""
 
 from memory_layer_rnd.blocks import CoreBlock
+from memory_layer_rnd.contract import (
+    DURABLE_TIERS,
+    FACT_WRITE_ACTIONS,
+    MEMORY_GUARANTEES,
+    MEMORY_REFUSALS,
+    FactWriteAction,
+    MemoryGuarantee,
+    MemoryRefusal,
+    MemoryTier,
+    RefusedContent,
+)
 from memory_layer_rnd.decay import decay_weight_for_age, temporal_decay_weight
 from memory_layer_rnd.graph import FactEdge, FactGraph
 from memory_layer_rnd.harness import AddFactResult, CompactionResult, Episode, MemoryHarness
@@ -30,14 +41,23 @@ __all__ = [
     "ContradictionOutcome",
     "CoreBlock",
     "DEFAULT_STRATEGIES",
+    "DURABLE_TIERS",
     "Episode",
     "EvalHarnessState",
+    "FACT_WRITE_ACTIONS",
     "FactEdge",
     "FactGraph",
+    "FactWriteAction",
     "MemoryEvent",
+    "MemoryGuarantee",
     "MemoryHarness",
+    "MemoryRefusal",
     "MemoryStore",
+    "MEMORY_GUARANTEES",
+    "MEMORY_REFUSALS",
+    "MemoryTier",
     "RETRIEVAL_EVAL_FIXTURES",
+    "RefusedContent",
     "RetrievalEvalCase",
     "RetrievalMetrics",
     "RetrievalStrategy",

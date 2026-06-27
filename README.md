@@ -55,6 +55,7 @@ flowchart LR
 - **Time is part of truth** — ask what was valid at `T`, not only what exists now.
 - **Contradictions should invalidate** — preserve history without keeping stale facts active.
 - **Blocks vs recall vs facts** — not everything belongs in the same memory tier.
+- **Memory is a contract** — see [ADR 0009](docs/adr/0009-memory-as-contract-boundaries.md) for tier guarantees and explicit refusals.
 - **Learn upstream, implement minimally** — see [docs/upstream-learning.md](docs/upstream-learning.md).
 
 ## Quick Start
@@ -96,6 +97,24 @@ for row in report:
 Fixtures live in `retrieval_eval.RETRIEVAL_EVAL_FIXTURES`; metrics use set-based
 precision and recall over stable fixture keys. See ADR 0008.
 
+### Memory contract
+
+Guarantees and refusals are catalogued in `contract.py` and documented in ADR 0009:
+
+```python
+from memory_layer_rnd.contract import MEMORY_GUARANTEES, MEMORY_REFUSALS, MemoryTier
+
+for guarantee in MEMORY_GUARANTEES:
+    print(guarantee.name, guarantee.description)
+
+for refusal in MEMORY_REFUSALS:
+    print(refusal.category.value, refusal.caller_alternative)
+```
+
+The harness stores text only through tier-specific APIs (`add_fact`, `remember_episode`,
+`upsert_block`, graph links). Raw message buffers and implicit transcript dumps are
+explicitly out of scope for durable retrieval.
+
 ## Upstream Study Repos
 
 - [mastroke/mem0](https://github.com/mastroke/mem0)
@@ -114,3 +133,4 @@ precision and recall over stable fixture keys. See ADR 0008.
 - ~~Graph-edge fact linking with traversal recall~~ — done (`link_facts`, `recall_related`)
 - ~~Conflict-resolution strategies for contradicting facts~~ — done (`conflict_strategy`, `confidence`)
 - ~~Retrieval evaluation harness with precision/recall fixtures~~ — done (`retrieval_eval`, ADR 0008)
+- ~~Memory-as-contract boundaries (guarantees vs refusals)~~ — done (`contract`, ADR 0009)
