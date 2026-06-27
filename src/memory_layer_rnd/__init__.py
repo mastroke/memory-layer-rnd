@@ -2,6 +2,7 @@
 
 from memory_layer_rnd.blocks import CoreBlock
 from memory_layer_rnd.decay import decay_weight_for_age, temporal_decay_weight
+from memory_layer_rnd.graph import FactEdge, FactGraph
 from memory_layer_rnd.harness import AddFactResult, CompactionResult, Episode, MemoryHarness
 from memory_layer_rnd.memory import MemoryEvent, MemoryStore
 from memory_layer_rnd.scopes import SessionScope
@@ -12,6 +13,8 @@ __all__ = [
     "CompactionResult",
     "CoreBlock",
     "Episode",
+    "FactEdge",
+    "FactGraph",
     "MemoryEvent",
     "MemoryHarness",
     "MemoryStore",

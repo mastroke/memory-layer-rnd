@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from memory_layer_rnd.blocks import CoreBlock
 from memory_layer_rnd.decay import temporal_decay_weight
 from memory_layer_rnd.dedup import near_duplicate
+from memory_layer_rnd.graph import FactEdge, FactGraph
 from memory_layer_rnd.scopes import SessionScope
 from memory_layer_rnd.temporal import TemporalFact, utc_now
 
@@ -41,6 +42,7 @@ class MemoryHarness:
     facts: list[TemporalFact] = field(default_factory=list)
     blocks: dict[str, CoreBlock] = field(default_factory=dict)
     graph: dict[str, set[str]] = field(default_factory=dict)
+    fact_graph: FactGraph = field(default_factory=FactGraph)
     message_buffer: list[str] = field(default_factory=list)
     archived_episodes: list[Episode] = field(default_factory=list)
     _hashes: set[str] = field(default_factory=set)
@@ -68,6 +70,52 @@ class MemoryHarness:
 
     def link(self, source: str, target: str) -> None:
         self.graph.setdefault(source.lower(), set()).add(target.lower())
+
+    def link_facts(
+        self,
+        source_fact_id: str,
+        target_fact_id: str,
+        relation: str = "related",
+    ) -> FactEdge:
+        """Link two stored facts for traversal-based related recall."""
+        known = {fact.fact_id for fact in self.facts}
+        if source_fact_id not in known:
+            raise ValueError(f"unknown source fact id: {source_fact_id}")
+        if target_fact_id not in known:
+            raise ValueError(f"unknown target fact id: {target_fact_id}")
+        return self.fact_graph.link(source_fact_id, target_fact_id, relation)
+
+    def _fact_by_id(self, fact_id: str) -> TemporalFact | None:
+        return next((fact for fact in self.facts if fact.fact_id == fact_id), None)
+
+    def recall_related(
+        self,
+        fact_id: str,
+        *,
+        as_of: str | None = None,
+        max_depth: int = 2,
+        limit: int = 8,
+    ) -> list[str]:
+        """Traverse fact-graph edges from ``fact_id`` and return related active facts."""
+        if self._fact_by_id(fact_id) is None:
+            raise ValueError(f"unknown fact id: {fact_id}")
+        if max_depth < 1:
+            raise ValueError("max_depth must be at least 1")
+
+        active = self.active_facts_at(as_of)
+        active_ids = {fact.fact_id for fact in active}
+        active_by_id = {fact.fact_id: fact for fact in active}
+
+        walked = self.fact_graph.traverse({fact_id}, max_depth=max_depth, active_ids=active_ids)
+        lines: list[str] = []
+        for depth, related_id, relation in walked[:limit]:
+            fact = active_by_id.get(related_id)
+            if fact is None:
+                continue
+            lines.append(
+                f"related[{depth}] via {relation}: {fact.subject} -> {fact.fact} (id={fact.fact_id})"
+            )
+        return lines
 
     @staticmethod
     def _hash_text(text: str) -> str:
@@ -189,6 +237,7 @@ class MemoryHarness:
             "active_fact_count": len(self.active_facts_at()),
             "block_count": len(self.blocks),
             "graph_edge_count": sum(len(targets) for targets in self.graph.values()),
+            "fact_edge_count": len(self.fact_graph.edges),
         }
 
     def retrieve(
@@ -209,12 +258,38 @@ class MemoryHarness:
         terms = set(re.findall(r"[a-z0-9]+", query.lower()))
         moment = utc_now() if as_of is None else _parse_time(as_of)
         results: list[tuple[float, str]] = []
+        active_facts = self.active_facts_at(as_of)
+        active_by_id = {fact.fact_id: fact for fact in active_facts}
+        active_ids = set(active_by_id)
+        matched_fact_ids: set[str] = set()
+        seen_related: set[str] = set()
 
-        for fact in self.active_facts_at(as_of):
+        for fact in active_facts:
             score = _score_text(f"{fact.subject} {fact.fact}", terms)
             if score > 0:
                 boost = _recency_weight(fact.valid_at, moment, recency_half_life_days)
                 results.append((score * boost + 0.2, f"fact[{fact.fact_id}]: {fact.subject} -> {fact.fact}"))
+                matched_fact_ids.add(fact.fact_id)
+
+        if matched_fact_ids and self.fact_graph.edges:
+            for depth, related_id, relation in self.fact_graph.traverse(
+                matched_fact_ids,
+                max_depth=2,
+                active_ids=active_ids,
+            ):
+                if related_id in seen_related:
+                    continue
+                seen_related.add(related_id)
+                fact = active_by_id.get(related_id)
+                if fact is None:
+                    continue
+                decay = 1.0 / (depth + 1)
+                results.append(
+                    (
+                        0.15 * decay,
+                        f"related[{depth}] via {relation}: {fact.subject} -> {fact.fact} (id={fact.fact_id})",
+                    )
+                )
 
         for source, targets in self.graph.items():
             edge_text = f"{source} {' '.join(sorted(targets))}"
