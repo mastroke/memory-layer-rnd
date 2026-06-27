@@ -235,3 +235,83 @@ def test_demo_reports_temporal_views() -> None:
     assert payload["metadata"]["active_fact_count"] >= 1
     assert payload["retrieval_now"]
     assert payload["active_facts_past"] != payload["active_facts_now"]
+
+
+def test_link_facts_connects_stored_facts() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    alpha = harness.add_fact("team", "builds memory layer", reference_time="2026-06-01T10:00:00+00:00")
+    beta = harness.add_fact("stack", "python fastapi docker", reference_time="2026-06-01T10:05:00+00:00")
+
+    edge = harness.link_facts(alpha.fact.fact_id, beta.fact.fact_id, relation="uses")
+
+    assert edge.source_id == alpha.fact.fact_id
+    assert edge.target_id == beta.fact.fact_id
+    assert edge.relation == "uses"
+    assert harness.metadata()["fact_edge_count"] == 1
+
+
+def test_link_facts_rejects_unknown_ids() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    created = harness.add_fact("team", "builds memory layer")
+
+    with pytest.raises(ValueError, match="unknown target fact id"):
+        harness.link_facts(created.fact.fact_id, "missing-id")
+
+
+def test_recall_related_traverses_linked_facts() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    alpha = harness.add_fact("team", "builds memory layer", reference_time="2026-06-01T10:00:00+00:00")
+    beta = harness.add_fact("stack", "python fastapi docker", reference_time="2026-06-01T10:05:00+00:00")
+    gamma = harness.add_fact("deploy", "runs on kubernetes", reference_time="2026-06-01T10:10:00+00:00")
+    harness.link_facts(alpha.fact.fact_id, beta.fact.fact_id, relation="uses")
+    harness.link_facts(beta.fact.fact_id, gamma.fact.fact_id, relation="deploys_to")
+
+    related = harness.recall_related(alpha.fact.fact_id, max_depth=2)
+
+    assert len(related) == 2
+    assert any("python fastapi docker" in line for line in related)
+    assert any("kubernetes" in line for line in related)
+    assert related[0].startswith("related[1]")
+
+
+def test_recall_related_respects_max_depth() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    alpha = harness.add_fact("team", "builds memory layer", reference_time="2026-06-01T10:00:00+00:00")
+    beta = harness.add_fact("stack", "python fastapi docker", reference_time="2026-06-01T10:05:00+00:00")
+    gamma = harness.add_fact("deploy", "runs on kubernetes", reference_time="2026-06-01T10:10:00+00:00")
+    harness.link_facts(alpha.fact.fact_id, beta.fact.fact_id)
+    harness.link_facts(beta.fact.fact_id, gamma.fact.fact_id)
+
+    depth_one = harness.recall_related(alpha.fact.fact_id, max_depth=1)
+    depth_two = harness.recall_related(alpha.fact.fact_id, max_depth=2)
+
+    assert len(depth_one) == 1
+    assert len(depth_two) == 2
+
+
+def test_recall_related_skips_inactive_linked_facts() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    alpha = harness.add_fact("role", "works on notebooks", reference_time="2026-06-01T10:00:00+00:00")
+    beta = harness.add_fact("tool", "uses jupyter notebooks", reference_time="2026-06-01T10:05:00+00:00")
+    harness.link_facts(alpha.fact.fact_id, beta.fact.fact_id)
+
+    harness.add_fact(
+        "role",
+        "works on memory systems not notebooks",
+        reference_time="2026-06-10T10:00:00+00:00",
+    )
+
+    related = harness.recall_related(beta.fact.fact_id, as_of="2026-06-15T00:00:00+00:00")
+    assert related == []
+
+
+def test_retrieve_boosts_graph_linked_related_facts() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    alpha = harness.add_fact("project", "memory layer research", reference_time="2026-06-01T10:00:00+00:00")
+    beta = harness.add_fact("infra", "kubernetes cluster east", reference_time="2026-06-01T10:05:00+00:00")
+    harness.link_facts(alpha.fact.fact_id, beta.fact.fact_id, relation="deploys_on")
+
+    results = harness.retrieve("memory layer research", as_of="2026-06-15T00:00:00+00:00")
+
+    assert any(item.startswith("fact[") and "memory layer" in item for item in results)
+    assert any(item.startswith("related[") and "kubernetes" in item for item in results)
