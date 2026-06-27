@@ -21,7 +21,13 @@ def build_demo_harness() -> MemoryHarness:
     harness.remember_episode("User now wants temporal facts and upstream pattern study.", reference_time="2026-06-15T09:00:00+00:00")
 
     harness.add_fact("focus", "agent memory research", reference_time="2026-06-01T10:05:00+00:00")
-    harness.add_fact("focus", "agent memory, temporal facts and benchmark harnesses", reference_time="2026-06-15T09:05:00+00:00")
+    focus = harness.add_fact(
+        "focus",
+        "agent memory, temporal facts and benchmark harnesses",
+        reference_time="2026-06-15T09:05:00+00:00",
+    )
+    infra = harness.add_fact("infra", "kubernetes evaluation cluster", reference_time="2026-06-15T09:10:00+00:00")
+    harness.link_facts(focus.fact.fact_id, infra.fact.fact_id, relation="runs_on")
     harness.link("agentic-ai", "memory")
     harness.link("agentic-ai", "evaluation")
 

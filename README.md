@@ -42,6 +42,9 @@ flowchart LR
 - `compact_episodes(keep_recent=N)` folds older episodes into a read-only
   `recall_summary` block and moves them to `archived_episodes`, modeling
   Letta-style recall compaction for long histories without losing provenance.
+- `link_facts(source_id, target_id, relation="related")` connects stored
+  `TemporalFact` rows; `recall_related(fact_id)` walks those edges, and
+  `retrieve()` boosts graph-linked neighbors of lexically matched facts.
 
 ## Design Thinking
 
@@ -90,3 +93,4 @@ print(harness.retrieve("temporal memory focus"))
 - ~~Letta recall compaction for long episode histories~~ — done (`compact_episodes`)
 - ~~Semantic near-duplicate dedup on fact write~~ — done (`add_fact` merge path)
 - ~~Time-decay invalidation with configurable half-life~~ — done (`decay_half_life_days`)
+- ~~Graph-edge fact linking with traversal recall~~ — done (`link_facts`, `recall_related`)

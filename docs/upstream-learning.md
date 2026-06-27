@@ -29,6 +29,7 @@ This repository studies patterns from three widely used memory systems. Forks li
 | Time-decay invalidation of stale facts | temporal edge decay patterns | `decay_half_life_days` on `MemoryHarness` |
 | Contradiction invalidation instead of delete | `edge_operations.py` | `add_fact(invalidate_conflicts=True)` |
 | Episode window before current time | `graph_data_operations.py` | `episodes_before()` |
+| Entity/fact edge traversal | `graphiti_core/edges.py` | `FactGraph` + `link_facts()` / `recall_related()` |
 
 ## Letta patterns adopted
 
@@ -51,7 +52,6 @@ This repository studies patterns from three widely used memory systems. Forks li
 
 - Mem0 LLM extraction and spaCy entity graph
 - Graphiti Neo4j graph engine and full hybrid search stack
-- Letta sleeptime agents, archival embeddings and Postgres persistence
 
 Those belong in later adapters once the harness contracts are stable.
 
@@ -65,7 +65,8 @@ Those belong in later adapters once the harness contracts are stable.
 
 - LongMemEval-style fixture replay
 - Optional Mem0 adapter behind `MemoryHarness`
-- Graphiti-style entity edge retrieval boosts
+- ~~Graphiti-style entity edge retrieval boosts~~ — shipped via `link_facts()` + traversal recall
+- Letta sleeptime agents, archival embeddings and Postgres persistence
 - ~~Letta-style recall compaction for long episode windows~~ — shipped via `compact_episodes()`
 - ~~Recency-weighted retrieval scoring~~ — shipped via `recency_half_life_days`
 - ~~Time-decay invalidation for stale active facts~~ — shipped via `decay_half_life_days`
