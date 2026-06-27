@@ -2,8 +2,9 @@ import pytest
 
 from memory_layer_rnd.decay import decay_weight_for_age, temporal_decay_weight
 from memory_layer_rnd.harness import MemoryHarness
+from memory_layer_rnd.resolver import ConflictStrategy, resolve_contradiction
 from memory_layer_rnd.scopes import SessionScope
-from memory_layer_rnd.temporal import utc_now
+from memory_layer_rnd.temporal import TemporalFact, utc_now
 
 
 def test_temporal_fact_invalidation() -> None:
@@ -315,3 +316,119 @@ def test_retrieve_boosts_graph_linked_related_facts() -> None:
 
     assert any(item.startswith("fact[") and "memory layer" in item for item in results)
     assert any(item.startswith("related[") and "kubernetes" in item for item in results)
+
+
+def test_last_write_wins_supersedes_contradicting_fact() -> None:
+    harness = MemoryHarness(
+        scope=SessionScope(user_id="u1"),
+        conflict_strategy=ConflictStrategy.LAST_WRITE_WINS,
+    )
+    first = harness.add_fact(
+        "role",
+        "works on notebooks",
+        reference_time="2026-06-01T10:00:00+00:00",
+        confidence=0.95,
+    )
+    second = harness.add_fact(
+        "role",
+        "works on memory systems not notebooks",
+        reference_time="2026-06-10T10:00:00+00:00",
+        confidence=0.4,
+    )
+
+    assert first.action == "created"
+    assert second.action == "superseded"
+    assert second.invalidated == [first.fact.fact_id]
+    assert len(harness.active_facts_at("2026-06-15T00:00:00+00:00")) == 1
+    assert "memory systems" in harness.active_facts_at("2026-06-15T00:00:00+00:00")[0].fact
+
+
+def test_confidence_weighted_rejects_weaker_contradiction() -> None:
+    harness = MemoryHarness(
+        scope=SessionScope(user_id="u1"),
+        conflict_strategy=ConflictStrategy.CONFIDENCE_WEIGHTED,
+    )
+    first = harness.add_fact(
+        "role",
+        "works on notebooks",
+        reference_time="2026-06-01T10:00:00+00:00",
+        confidence=0.9,
+    )
+    second = harness.add_fact(
+        "role",
+        "works on memory systems not notebooks",
+        reference_time="2026-06-15T10:00:00+00:00",
+        confidence=0.4,
+    )
+
+    assert first.action == "created"
+    assert second.action == "rejected"
+    assert second.fact.fact_id == first.fact.fact_id
+    assert len(harness.facts) == 1
+    active = harness.active_facts_at("2026-06-20T00:00:00+00:00")
+    assert len(active) == 1 and "notebooks" in active[0].fact
+
+
+def test_confidence_weighted_supersedes_when_incoming_is_stronger() -> None:
+    harness = MemoryHarness(
+        scope=SessionScope(user_id="u1"),
+        conflict_strategy=ConflictStrategy.CONFIDENCE_WEIGHTED,
+    )
+    first = harness.add_fact(
+        "role",
+        "works on notebooks",
+        reference_time="2026-06-01T10:00:00+00:00",
+        confidence=0.5,
+    )
+    second = harness.add_fact(
+        "role",
+        "works on memory systems not notebooks",
+        reference_time="2026-06-05T10:00:00+00:00",
+        confidence=0.85,
+    )
+
+    assert second.action == "superseded"
+    assert second.invalidated == [first.fact.fact_id]
+    active = harness.active_facts_at("2026-06-10T00:00:00+00:00")
+    assert len(active) == 1 and "memory systems" in active[0].fact
+
+
+def test_confidence_weighted_tie_breaks_on_reference_time() -> None:
+    harness = MemoryHarness(
+        scope=SessionScope(user_id="u1"),
+        conflict_strategy=ConflictStrategy.CONFIDENCE_WEIGHTED,
+    )
+    first = harness.add_fact(
+        "role",
+        "works on notebooks",
+        reference_time="2026-06-01T10:00:00+00:00",
+        confidence=0.7,
+    )
+    second = harness.add_fact(
+        "role",
+        "works on memory systems not notebooks",
+        reference_time="2026-06-10T10:00:00+00:00",
+        confidence=0.7,
+    )
+
+    assert second.action == "superseded"
+    active = harness.active_facts_at("2026-06-15T00:00:00+00:00")
+    assert len(active) == 1 and "memory systems" in active[0].fact
+
+
+def test_resolve_contradiction_unit_cases() -> None:
+    older = TemporalFact(
+        subject="role",
+        fact="works on notebooks",
+        valid_at=utc_now(),
+        confidence=0.8,
+    )
+    outcome = resolve_contradiction(
+        strategy=ConflictStrategy.CONFIDENCE_WEIGHTED,
+        conflicting=[older],
+        incoming_time=older.valid_at,
+        incoming_confidence=0.5,
+    )
+    assert outcome.action == "rejected"
+    assert not outcome.store_incoming
+    assert outcome.prevailing_fact_id == older.fact_id
