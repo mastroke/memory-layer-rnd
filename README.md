@@ -35,6 +35,10 @@ flowchart LR
 - `retrieve(..., recency_half_life_days=N)` adds an exponential recency boost so
   fresher, equally-relevant facts and episodes rank ahead of stale ones
   (generative-agents style). Omit it for purely lexical ranking.
+- `MemoryHarness(decay_half_life_days=N)` applies time-decay invalidation:
+  uncontradicted facts lose weight from `valid_at` and drop out of
+  `active_facts_at` when weight falls below `decay_invalidation_threshold`
+  (default `0.5`). Omit it to keep age-only retrieval bias without invalidation.
 - `compact_episodes(keep_recent=N)` folds older episodes into a read-only
   `recall_summary` block and moves them to `archived_episodes`, modeling
   Letta-style recall compaction for long histories without losing provenance.
@@ -85,3 +89,4 @@ print(harness.retrieve("temporal memory focus"))
 - ~~Recency-weighted retrieval boosts~~ — done (`recency_half_life_days`)
 - ~~Letta recall compaction for long episode histories~~ — done (`compact_episodes`)
 - ~~Semantic near-duplicate dedup on fact write~~ — done (`add_fact` merge path)
+- ~~Time-decay invalidation with configurable half-life~~ — done (`decay_half_life_days`)

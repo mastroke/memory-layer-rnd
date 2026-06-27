@@ -26,6 +26,7 @@ This repository studies patterns from three widely used memory systems. Forks li
 | `valid_at` / `invalid_at` fact validity | `graphiti_core/edges.py` | `TemporalFact` in `temporal.py` |
 | Episode `reference_time` | `graphiti_core/graphiti.py` | `Episode.reference_time` |
 | Point-in-time active facts | `search/search_filters.py` | `active_facts_at()` |
+| Time-decay invalidation of stale facts | temporal edge decay patterns | `decay_half_life_days` on `MemoryHarness` |
 | Contradiction invalidation instead of delete | `edge_operations.py` | `add_fact(invalidate_conflicts=True)` |
 | Episode window before current time | `graph_data_operations.py` | `episodes_before()` |
 
@@ -44,6 +45,7 @@ This repository studies patterns from three widely used memory systems. Forks li
 | Pattern | Upstream reference | Implemented here |
 | --- | --- | --- |
 | Recency-weighted memory ranking | generative-agents `retrieve()` recency decay; Mem0 score fusion | `_recency_weight()` + `retrieve(recency_half_life_days=...)` |
+| Time-decay fact invalidation | Graphiti temporal edge aging | `decay.py` + `decay_half_life_days` on `MemoryHarness` |
 
 ## What is intentionally not ported yet
 
@@ -66,3 +68,4 @@ Those belong in later adapters once the harness contracts are stable.
 - Graphiti-style entity edge retrieval boosts
 - ~~Letta-style recall compaction for long episode windows~~ — shipped via `compact_episodes()`
 - ~~Recency-weighted retrieval scoring~~ — shipped via `recency_half_life_days`
+- ~~Time-decay invalidation for stale active facts~~ — shipped via `decay_half_life_days`
