@@ -1,7 +1,9 @@
 import pytest
 
+from memory_layer_rnd.decay import decay_weight_for_age, temporal_decay_weight
 from memory_layer_rnd.harness import MemoryHarness
 from memory_layer_rnd.scopes import SessionScope
+from memory_layer_rnd.temporal import utc_now
 
 
 def test_temporal_fact_invalidation() -> None:
@@ -131,6 +133,69 @@ def test_recency_weighting_rejects_nonpositive_half_life() -> None:
 
     with pytest.raises(ValueError):
         harness.retrieve("graph", as_of="2026-06-02T00:00:00+00:00", recency_half_life_days=0)
+
+
+def test_decay_weight_follows_half_life_curve() -> None:
+    half_life = 30.0
+    assert decay_weight_for_age(0.0, half_life) == pytest.approx(1.0)
+    assert decay_weight_for_age(half_life, half_life) == pytest.approx(0.5)
+    assert decay_weight_for_age(2 * half_life, half_life) == pytest.approx(0.25)
+    assert decay_weight_for_age(3 * half_life, half_life) == pytest.approx(0.125)
+
+
+def test_temporal_decay_weight_disabled_returns_unity() -> None:
+    moment = utc_now()
+    assert temporal_decay_weight(moment, moment, None) == 1.0
+
+
+def test_time_decay_invalidates_stale_facts() -> None:
+    harness = MemoryHarness(
+        scope=SessionScope(user_id="u1"),
+        decay_half_life_days=30,
+        decay_invalidation_threshold=0.5,
+    )
+    harness.add_fact("focus", "vector memory research", reference_time="2026-01-01T00:00:00+00:00")
+
+    fresh_view = harness.active_facts_at("2026-01-20T00:00:00+00:00")
+    stale_view = harness.active_facts_at("2026-02-05T00:00:00+00:00")
+
+    assert len(fresh_view) == 1
+    assert harness.fact_decay_weight(fresh_view[0], "2026-01-20T00:00:00+00:00") > 0.5
+    assert len(stale_view) == 0
+    assert harness.fact_decay_weight(harness.facts[0], "2026-02-05T00:00:00+00:00") < 0.5
+
+
+def test_time_decay_disabled_keeps_old_facts_active() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"))
+    harness.add_fact("focus", "vector memory research", reference_time="2026-01-01T00:00:00+00:00")
+
+    assert len(harness.active_facts_at("2026-12-01T00:00:00+00:00")) == 1
+
+
+def test_time_decay_respects_explicit_contradiction_invalidation() -> None:
+    harness = MemoryHarness(scope=SessionScope(user_id="u1"), decay_half_life_days=365)
+    harness.add_fact("role", "works on notebooks", reference_time="2026-06-01T10:00:00+00:00")
+    harness.add_fact(
+        "role",
+        "works on memory systems not notebooks",
+        reference_time="2026-06-10T10:00:00+00:00",
+    )
+
+    past = harness.active_facts_at("2026-06-05T00:00:00+00:00")
+    present = harness.active_facts_at("2026-06-15T00:00:00+00:00")
+
+    assert len(past) == 1 and "notebooks" in past[0].fact
+    assert len(present) == 1 and "memory systems" in present[0].fact
+
+
+def test_decay_half_life_rejects_nonpositive_config() -> None:
+    with pytest.raises(ValueError):
+        MemoryHarness(scope=SessionScope(user_id="u1"), decay_half_life_days=0)
+
+
+def test_decay_invalidation_threshold_rejects_out_of_range() -> None:
+    with pytest.raises(ValueError):
+        MemoryHarness(scope=SessionScope(user_id="u1"), decay_invalidation_threshold=0.0)
 
 
 def test_recall_compaction_summarizes_old_episodes() -> None:

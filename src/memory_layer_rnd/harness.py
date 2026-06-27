@@ -1,9 +1,9 @@
 import hashlib
-import math
 import re
 from dataclasses import dataclass, field
 
 from memory_layer_rnd.blocks import CoreBlock
+from memory_layer_rnd.decay import temporal_decay_weight
 from memory_layer_rnd.dedup import near_duplicate
 from memory_layer_rnd.scopes import SessionScope
 from memory_layer_rnd.temporal import TemporalFact, utc_now
@@ -44,6 +44,14 @@ class MemoryHarness:
     message_buffer: list[str] = field(default_factory=list)
     archived_episodes: list[Episode] = field(default_factory=list)
     _hashes: set[str] = field(default_factory=set)
+    decay_half_life_days: float | None = None
+    decay_invalidation_threshold: float = 0.5
+
+    def __post_init__(self) -> None:
+        if self.decay_half_life_days is not None and self.decay_half_life_days <= 0:
+            raise ValueError("decay_half_life_days must be positive")
+        if not 0.0 < self.decay_invalidation_threshold <= 1.0:
+            raise ValueError("decay_invalidation_threshold must be in (0, 1]")
 
     def remember_episode(self, text: str, reference_time: str | None = None) -> Episode:
         timestamp = reference_time or utc_now().isoformat()
@@ -158,9 +166,22 @@ class MemoryHarness:
         )
         return CompactionResult(summary=summary, archived=len(older), retained=len(recent))
 
+    def fact_decay_weight(self, fact: TemporalFact, as_of: str | None = None) -> float:
+        """Return the time-decay weight of ``fact`` relative to ``as_of``."""
+        moment = utc_now() if as_of is None else _parse_time(as_of)
+        return temporal_decay_weight(fact.valid_at, moment, self.decay_half_life_days)
+
     def active_facts_at(self, as_of: str | None = None) -> list[TemporalFact]:
         moment = utc_now() if as_of is None else _parse_time(as_of)
-        return [fact for fact in self.facts if fact.is_active_at(moment)]
+        active: list[TemporalFact] = []
+        for fact in self.facts:
+            if not fact.is_active_at(moment):
+                continue
+            if self.decay_half_life_days is not None:
+                if self.fact_decay_weight(fact, as_of) < self.decay_invalidation_threshold:
+                    continue
+            active.append(fact)
+        return active
 
     def metadata(self) -> dict[str, int]:
         return {
@@ -230,12 +251,7 @@ def _recency_weight(event_time, as_of, half_life_days: float | None) -> float:
     A memory exactly ``half_life_days`` old keeps half of its lexical score;
     future-dated events are clamped to no boost. Disabled when half-life is None.
     """
-    if half_life_days is None:
-        return 1.0
-    if half_life_days <= 0:
-        raise ValueError("recency_half_life_days must be positive")
-    age_days = max((as_of - event_time).total_seconds() / 86400.0, 0.0)
-    return math.pow(0.5, age_days / half_life_days)
+    return temporal_decay_weight(event_time, as_of, half_life_days)
 
 
 def _score_text(text: str, terms: set[str]) -> float:
