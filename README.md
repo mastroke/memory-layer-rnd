@@ -81,6 +81,21 @@ print(harness.active_facts_at("2026-06-05T00:00:00+00:00"))
 print(harness.retrieve("temporal memory focus"))
 ```
 
+### Retrieval evaluation
+
+Compare lexical and recency-weighted ranking on the bundled fixture pack:
+
+```python
+from memory_layer_rnd import DEFAULT_STRATEGIES, RETRIEVAL_EVAL_FIXTURES, compare_strategies
+
+report = compare_strategies(list(RETRIEVAL_EVAL_FIXTURES), list(DEFAULT_STRATEGIES))
+for row in report:
+    print(row.strategy, row.mean_precision, row.mean_recall, row.mean_f1)
+```
+
+Fixtures live in `retrieval_eval.RETRIEVAL_EVAL_FIXTURES`; metrics use set-based
+precision and recall over stable fixture keys. See ADR 0008.
+
 ## Upstream Study Repos
 
 - [mastroke/mem0](https://github.com/mastroke/mem0)
@@ -98,3 +113,4 @@ print(harness.retrieve("temporal memory focus"))
 - ~~Time-decay invalidation with configurable half-life~~ — done (`decay_half_life_days`)
 - ~~Graph-edge fact linking with traversal recall~~ — done (`link_facts`, `recall_related`)
 - ~~Conflict-resolution strategies for contradicting facts~~ — done (`conflict_strategy`, `confidence`)
+- ~~Retrieval evaluation harness with precision/recall fixtures~~ — done (`retrieval_eval`, ADR 0008)
